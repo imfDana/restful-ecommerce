@@ -18,3 +18,5 @@ uploads/*.png
 
 ### Mac OS ###
 .DS_Store
+postman/reports
+reports/
