@@ -96,3 +96,46 @@ jobs:
     - name: Stop the service
       if: always()
       run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans
+
+  Run_Newman_API_Tests:
+    name: Run Newman API Tests
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    
+    env:
+      AUTH_USERNAME: ${{secrets.AUTH_USERNAME}}
+      AUTH_PASSWORD: ${{secrets.AUTH_PASSWORD}}
+      SECRET_KEY: ${{secrets.SECRET_KEY}}
+  
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Install the dependencies
+      run: npm ci
+
+    - name: Start the service using Docker Compose
+      run: docker compose -f docker-compose-ecommerce.yml up -d
+    
+    - name: Wait for service to be available
+      run: npx wait-on http://localhost:3004
+
+    - name: Install Newman and Reporters
+      run: npm install -g newman newman-reporter-htmlextra
+
+    - name: Run Newman API Tests
+      run: |
+        mkdir -p postman/reports
+        newman run postman/restful-ecommerce-collection.json -e postman/environments/environment-qa.json -r cli,htmlextra,junit --reporter-htmlextra-export postman/reports/report.html --reporter-junit-export postman/reports/results.xml
+
+    - name: Upload Test Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: api-test-reports
+        path: postman/reports/
+
+    - name: Stop the service
+      if: always()
+      run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans
