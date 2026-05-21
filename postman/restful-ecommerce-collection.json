@@ -1,0 +1,588 @@
+{
+  "info": {
+    "name": "Restful E-Commerce API Tests (QA)",
+    "description": "Professional test suite based on QA best practices. Includes Auth automation, negative testing, and DB persistence checks.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-login script if token is missing or expired",
+          "const token = pm.collectionVariables.get('authToken');",
+          "const expiry = pm.collectionVariables.get('tokenExpiry');",
+          "const now = Math.floor(Date.now() / 1000);",
+          "if (!token || !expiry || now >= (expiry - 60)) {",
+          "    console.log('Auto-fetching new auth token...');",
+          "    const envUser = pm.environment.get('username');",
+          "    const envPass = pm.environment.get('password');",
+          "    const username = (!envUser || envUser.includes('<')) ? 'admin' : envUser;",
+          "    const password = (!envPass || envPass.includes('<')) ? 'secretPass123' : envPass;",
+          "    const req = {",
+          "        url: pm.environment.get('baseUrl') + '/auth',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' },",
+          "        body: { mode: 'raw', raw: JSON.stringify({ username: username, password: password }) }",
+          "    };",
+          "    pm.sendRequest(req, function (err, res) {",
+          "        if (!err && (res.code === 200 || res.code === 201)) {",
+          "            const data = res.json();",
+          "            pm.collectionVariables.set('authToken', data.token);",
+          "            pm.collectionVariables.set('tokenExpiry', now + 3600);",
+          "        } else { console.error('Auto-auth failed'); }",
+          "    });",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global Guards",
+          "pm.test('Global Check: No 5xx Server Error', function() {",
+          "    pm.expect(pm.response.code).to.be.below(500);",
+          "});",
+          "pm.test('Global Check: Response time < 1000ms', function() {",
+          "    pm.expect(pm.response.responseTime).to.be.below(1000);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "authToken", "value": "" },
+    { "key": "tokenExpiry", "value": "" },
+    { "key": "createdOrderId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 - Health Check",
+      "item": [
+        {
+          "name": "GET /health - Server is up",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has Content-Type header', () => pm.response.to.have.header('Content-Type'));",
+                  "const body = pm.response.json();",
+                  "pm.test('Body has status field UP and Running', () => pm.expect(body).to.have.property('status', 'UP and Running'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Auth",
+      "item": [
+        {
+          "name": "POST /auth - Valid credentials",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{baseUrl}}/auth",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Local override for username and password if not set in environment",
+                  "const envUser = pm.environment.get('username');",
+                  "const envPass = pm.environment.get('password');",
+                  "if (!envUser || envUser.includes('<')) pm.environment.set('username', 'admin');",
+                  "if (!envPass || envPass.includes('<')) pm.environment.set('password', 'secretPass123');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Response has token', () => pm.expect(body).to.have.property('token'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth - Wrong password",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{baseUrl}}/auth",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"wrong_password_123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error message is present', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth - Missing fields",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{baseUrl}}/auth",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error message is present', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Orders - Happy Path (CRUD)",
+      "item": [
+        {
+          "name": "POST /addOrder - Create order",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{baseUrl}}/addOrder",
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"user_id\": \"usr_{{$timestamp}}\",\n    \"product_id\": \"prod_{{$timestamp}}\",\n    \"product_name\": \"QA Product {{$timestamp}}\",\n    \"product_amount\": 50.00,\n    \"qty\": 2,\n    \"tax_amt\": 5.00,\n    \"total_amt\": 105.00\n  }\n]"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Response object contains message', () => pm.expect(body).to.have.property('message'));",
+                  "if (body.orders && body.orders.length > 0) {",
+                  "    const createdOrder = body.orders[body.orders.length - 1];",
+                  "    pm.collectionVariables.set('createdOrderId', createdOrder.id);",
+                  "    pm.test('ID is auto-assigned > 0', () => {",
+                  "        pm.expect(createdOrder.id).to.be.a('number');",
+                  "        pm.expect(createdOrder.id).to.be.above(0);",
+                  "    });",
+                  "    pm.test('Business logic: total_amt > 0', () => pm.expect(createdOrder.total_amt).to.be.above(0));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /getAllOrders - Get all orders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/getAllOrders"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Response contains orders array', () => pm.expect(body.orders).to.be.an('array'));",
+                  "pm.test('Array is not empty', () => pm.expect(body.orders.length).to.be.at.least(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /updateOrder/:id - Full update",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/updateOrder/{{createdOrderId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"usr_updated\",\n  \"product_id\": \"prod_updated\",\n  \"product_name\": \"Updated Product Name\",\n  \"product_amount\": 100.00,\n  \"qty\": 3,\n  \"tax_amt\": 10.00,\n  \"total_amt\": 310.00\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Response reflects updated qty', () => pm.expect(body.order.qty).to.equal(3));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /partialUpdateOrder/:id - Partial update",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/partialUpdateOrder/{{createdOrderId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qty\": 5\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Response reflects patched qty', () => pm.expect(body.order.qty).to.equal(5));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Persistence Checks",
+      "item": [
+        {
+          "name": "GET /getOrder - Verify PUT/PATCH persisted",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/getOrder?id={{createdOrderId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "getOrder" ],
+              "query": [ { "key": "id", "value": "{{createdOrderId}}" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns orders array with 1 item', () => {",
+                  "    pm.expect(body.orders).to.be.an('array');",
+                  "    pm.expect(body.orders.length).to.equal(1);",
+                  "});",
+                  "pm.test('Qty is updated to 5 (from PATCH)', () => pm.expect(body.orders[0].qty).to.equal(5));",
+                  "pm.test('User ID is updated to usr_updated (from PUT)', () => pm.expect(body.orders[0].user_id).to.equal('usr_updated'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /getOrder - Filter by user_id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/getOrder?user_id=usr_updated",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "getOrder" ],
+              "query": [ { "key": "user_id", "value": "usr_updated" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Every item has correct user_id', () => {",
+                  "    pm.expect(body.orders).to.be.an('array').that.is.not.empty;",
+                  "    body.orders.forEach(item => pm.expect(item.user_id).to.equal('usr_updated'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /getOrder - Ignore wrong casing",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/getOrder?Id={{createdOrderId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "getOrder" ],
+              "query": [ { "key": "Id", "value": "{{createdOrderId}}" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Param is ignored, returns all orders', () => {",
+                  "    pm.expect(body.orders).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Orders - Negative Cases",
+      "item": [
+        {
+          "name": "POST /addOrder - Body is object not array",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{baseUrl}}/addOrder",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"usr_123\",\n  \"product_id\": \"prod_123\",\n  \"product_name\": \"Missing Array\",\n  \"product_amount\": 50,\n  \"qty\": 1,\n  \"tax_amt\": 5,\n  \"total_amt\": 55\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error message explains array requirement', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /getOrder - Non-existent ID returns 404",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/getOrder?id=999999",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "getOrder" ],
+              "query": [ { "key": "id", "value": "999999" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns message indicating no order found', () => {",
+                  "    pm.expect(body.message).to.equal('No Order found with the given parameters!');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /deleteOrder/:id - No token",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/deleteOrder/{{createdOrderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error message is present', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /updateOrder/:id - Invalid token",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer this_is_a_fake_tampered_token" }
+            ],
+            "url": "{{baseUrl}}/updateOrder/{{createdOrderId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"usr_updated\",\n  \"product_id\": \"prod_updated\",\n  \"product_name\": \"Updated Product Name\",\n  \"product_amount\": 100.00,\n  \"qty\": 3,\n  \"tax_amt\": 10.00,\n  \"total_amt\": 310.00\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error message about token is present', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Image Upload",
+      "item": [
+        {
+          "name": "POST /imageUpload - Attach image manually",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/imageUpload",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "ATTACH A JPG/PNG FILE HERE MANUALLY BEFORE RUNNING"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Note: If running via Newman without a local file bound, this request may fail or return an error depending on the API.",
+                  "// We skip assertions here, or let them fail gracefully to remind the user to attach a file."
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 - Cleanup",
+      "item": [
+        {
+          "name": "DELETE /deleteOrder/:id - Delete test order",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/deleteOrder/{{createdOrderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 204', () => pm.expect([200, 204]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /getOrder - Verify Delete persisted",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/getOrder?id={{createdOrderId}}",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "getOrder" ],
+              "query": [ { "key": "id", "value": "{{createdOrderId}}" } ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 (Not found after delete)', () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns message indicating no order found', () => pm.expect(body.message).to.equal('No Order found with the given parameters!'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /deleteAllOrders - Wipe all",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": "{{baseUrl}}/deleteAllOrders"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 204 or 404 (if already empty)', () => pm.expect([204, 404]).to.include(pm.response.code));",
+                  "pm.test('Cleanup Collection Variables', () => {",
+                  "    pm.collectionVariables.unset('authToken');",
+                  "    pm.collectionVariables.unset('tokenExpiry');",
+                  "    pm.collectionVariables.unset('createdOrderId');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
