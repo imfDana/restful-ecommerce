@@ -1,7 +1,7 @@
 # This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
 
-name: Node.js CI
+name:  CI - Unit Tests + Newman QA Suite
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
       - issue-*
 jobs:
   Build_App_using_node_and_Run_Tests:
-    name: Build Service using Node and run unit tests
+    name: Build Service using Node and Run unit tests
 
     runs-on: ubuntu-latest
     permissions:
@@ -40,13 +40,13 @@ jobs:
         SECRET_KEY=${{ secrets.SECRET_KEY }}
         EOF
 
-    - name: Start the app in Background and Wait for Server to be available
+    - name: Start the app in background and wait for the server to be available
       run: npm start && npx wait-on http://localhost:3004 & 
 
     - name: Run the tests
       run: npm test
   
-    - name: Kill all instances of node
+    - name: Kill all instances of Node
       run: pkill -f node
     
     - name: Test Report
