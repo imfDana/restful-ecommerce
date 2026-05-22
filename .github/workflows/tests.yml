@@ -133,12 +133,18 @@ jobs:
       run: npx wait-on http://localhost:3004 --timeout 60000  # Añadido timeout
 
     - name: Install Newman and Reporters
-      run: npm install -g newman newman-reporter-htmlextra
+      run: npm install -g newman newman-reporter-htmlextra newman-reporter-junitfull
 
     - name: Run Newman API Tests
       run: |
         mkdir -p postman/reports
-        newman run postman/restful-ecommerce-collection.json -e postman/environments/environment-qa.json -r cli,htmlextra,junit --reporter-htmlextra-export postman/reports/report.html --reporter-junit-export postman/reports/results.xml
+        newman run postman/restful-ecommerce-collection.json \
+          -e postman/environments/environment-qa.json \
+          --env-var "username=${{ secrets.AUTH_USERNAME }}" \
+          --env-var "password=${{ secrets.AUTH_PASSWORD }}" \
+          -r cli,htmlextra,junitfull \
+          --reporter-htmlextra-export postman/reports/report.html \
+          --reporter-junitfull-export postman/reports/results.xml
 
     - name: Upload Test Report
       uses: actions/upload-artifact@v4

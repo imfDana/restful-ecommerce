@@ -20,9 +20,9 @@ echo.
 :: Run newman
 call newman run restful-ecommerce-collection.json ^
   -e environments\environment-qa.json ^
-  -r cli,htmlextra,junit ^
+  -r cli,htmlextra,junitfull ^
   --reporter-htmlextra-export "%REPORT_DIR%\report.html" ^
-  --reporter-junit-export "%REPORT_DIR%\results.xml" ^
+  --reporter-junitfull-export "%REPORT_DIR%\results.xml" ^
   --timeout-request 10000 ^
   --delay-request 100
 
