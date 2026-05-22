@@ -1,7 +1,7 @@
 # This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
 
-name:  CI - Unit Tests + Newman QA Suite
+name: CI - Unit Tests + Newman QA Suite
 
 on:
   push:
@@ -12,6 +12,7 @@ on:
     branches: 
       - main
       - issue-*
+      
 jobs:
   Build_App_using_node_and_Run_Tests:
     name: Build Service using Node and Run unit tests
@@ -27,7 +28,7 @@ jobs:
   
     steps:
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4  # Cambiado de v6 a v4
 
     - name: Install the dependencies
       run: npm ci
@@ -40,14 +41,16 @@ jobs:
         SECRET_KEY=${{ secrets.SECRET_KEY }}
         EOF
 
-    - name: Start the app in background and wait for the server to be available
-      run: npm start && npx wait-on http://localhost:3004 & 
+    - name: Start the app in background
+      run: |
+        npm start &
+        npx wait-on http://localhost:3004
 
     - name: Run the tests
       run: npm test
   
     - name: Kill all instances of Node
-      run: pkill -f node
+      run: pkill -f node || true  # Añadido || true para que no falle si no hay procesos
     
     - name: Test Report
       uses: dorny/test-reporter@v3
@@ -71,7 +74,7 @@ jobs:
   
     steps:
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4  # Cambiado de v6 a v4
 
     - name: Install the dependencies
       run: npm ci
@@ -88,14 +91,14 @@ jobs:
       run: docker compose -f docker-compose-ecommerce.yml up -d
     
     - name: Wait for service to be available
-      run: npx wait-on http://localhost:3004 &
+      run: npx wait-on http://localhost:3004 --timeout 60000  # Añadido timeout
 
     - name: Run the unit tests
       run: npm run unit-test
 
     - name: Stop the service
       if: always()
-      run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans
+      run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans || true  # Añadido || true
 
   Run_Newman_API_Tests:
     name: Run Newman API Tests
@@ -110,16 +113,24 @@ jobs:
   
     steps:
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4  # Cambiado de v6 a v4
 
     - name: Install the dependencies
       run: npm ci
+
+    - name: Create .env from secrets
+      run: |
+        cat > .env <<'EOF'
+        AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}
+        AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}
+        SECRET_KEY=${{ secrets.SECRET_KEY }}
+        EOF
 
     - name: Start the service using Docker Compose
       run: docker compose -f docker-compose-ecommerce.yml up -d
     
     - name: Wait for service to be available
-      run: npx wait-on http://localhost:3004
+      run: npx wait-on http://localhost:3004 --timeout 60000  # Añadido timeout
 
     - name: Install Newman and Reporters
       run: npm install -g newman newman-reporter-htmlextra
@@ -138,4 +149,4 @@ jobs:
 
     - name: Stop the service
       if: always()
-      run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans
+      run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans || true  # Añadido || true
