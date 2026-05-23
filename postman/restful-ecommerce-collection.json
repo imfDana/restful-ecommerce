@@ -4,7 +4,7 @@
     "description": "Professional test suite based on QA best practices. Includes Auth automation, negative testing, and DB persistence checks.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "event": [
+  "event": [ 
     {
       "listen": "prerequest",
       "script": {
