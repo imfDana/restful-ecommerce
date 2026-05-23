@@ -1,158 +1,134 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+# CI Workflow — Unit Tests + Newman API Suite
+# Runs on every push/PR to main or issue-* branches
 
 name: CI - Unit Tests + Newman QA Suite
 
 on:
   push:
-    branches: 
+    branches:
       - main
       - issue-*
   pull_request_target:
-    branches: 
+    branches:
       - main
       - issue-*
-      
+
 jobs:
-  Build_App_using_node_and_Run_Tests:
-    name: Build Service using Node and Run unit tests
-
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 1: Build with bare Node and run unit tests
+  # ─────────────────────────────────────────────────────────────────────────────
+  Unit_Tests:
+    name: Run Unit Tests (Node)
     runs-on: ubuntu-latest
     permissions:
       checks: write
-    
+
     env:
-      AUTH_USERNAME: ${{secrets.AUTH_USERNAME}}
-      AUTH_PASSWORD: ${{secrets.AUTH_PASSWORD}}
-      SECRET_KEY: ${{secrets.SECRET_KEY}}
-  
+      AUTH_USERNAME: ${{ secrets.AUTH_USERNAME }}
+      AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4  # Cambiado de v6 a v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install the dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Create .env from secrets
-      run: |
-        cat > .env <<'EOF'
-        AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}
-        AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}
-        SECRET_KEY=${{ secrets.SECRET_KEY }}
-        EOF
+      - name: Create .env from secrets
+        # NOTE: unquoted EOF so the shell receives literal values already
+        # expanded by GitHub Actions before the step runs.
+        run: |
+          cat > .env <<EOF
+          AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}
+          AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          EOF
 
-    - name: Start the app in background
-      run: |
-        npm start &
-        npx wait-on http://localhost:3004
+      - name: Start the app in background
+        run: npm start &
 
-    - name: Run the tests
-      run: npm test
-  
-    - name: Kill all instances of Node
-      run: pkill -f node || true  # Añadido || true para que no falle si no hay procesos
-    
-    - name: Test Report
-      uses: dorny/test-reporter@v3
-      if: success() || failure()
-      with:
-          name: Test Report
+      # Use the /health endpoint (returns HTTP 200) instead of / (returns 404).
+      # wait-on treats any non-2xx as "not ready" — that was the root cause.
+      - name: Wait for the service to be healthy
+        run: npx wait-on http://localhost:3004/health --timeout 30000
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Kill Node process
+        if: always()
+        run: pkill -f node || true
+
+      - name: Publish Test Report
+        uses: dorny/test-reporter@v3
+        if: success() || failure()
+        with:
+          name: Unit Test Report
           path: ${{ github.workspace }}/reports/test-results.json
-          reporter: 'mocha-json'
+          reporter: mocha-json
 
-  Build_App_Docker_Compose_and_Run_Test:
-    name: Build Service using Docker Compose and run unit tests
-
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2: Build via Docker Compose and run Newman API tests
+  # Only runs after unit tests pass (needs: Unit_Tests).
+  # ─────────────────────────────────────────────────────────────────────────────
+  Newman_API_Tests:
+    name: Run Newman API Tests (Docker Compose)
     runs-on: ubuntu-latest
+    needs: Unit_Tests          # Don't waste Docker build time if unit tests fail
     permissions:
       checks: write
-    
+
     env:
-      AUTH_USERNAME: ${{secrets.AUTH_USERNAME}}
-      AUTH_PASSWORD: ${{secrets.AUTH_PASSWORD}}
-      SECRET_KEY: ${{secrets.SECRET_KEY}}
-  
+      AUTH_USERNAME: ${{ secrets.AUTH_USERNAME }}
+      AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4  # Cambiado de v6 a v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install the dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Create .env from secrets
-      run: |
-        cat > .env <<'EOF'
-        AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}
-        AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}
-        SECRET_KEY=${{ secrets.SECRET_KEY }}
-        EOF
+      - name: Create .env from secrets
+        run: |
+          cat > .env <<EOF
+          AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}
+          AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          EOF
 
-    - name: Start the service using Docker Compose
-      run: docker compose -f docker-compose-ecommerce.yml up -d
-    
-    - name: Wait for service to be available
-      run: npx wait-on http://localhost:3004 --timeout 60000  # Añadido timeout
+      - name: Start service via Docker Compose
+        run: docker compose -f docker-compose-ecommerce.yml up -d --build
 
-    - name: Run the unit tests
-      run: npm run unit-test
+      # Docker image builds on a cold runner take 60-90 s.
+      # The previous 60 000 ms timeout was consistently too short.
+      # Using /health (200 OK) so wait-on resolves immediately once ready.
+      - name: Wait for the service to be healthy
+        run: npx wait-on http://localhost:3004/health --timeout 120000
 
-    - name: Stop the service
-      if: always()
-      run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans || true  # Añadido || true
+      - name: Install Newman and reporters
+        run: npm install -g newman newman-reporter-htmlextra newman-reporter-junitfull
 
-  Run_Newman_API_Tests:
-    name: Run Newman API Tests
-    runs-on: ubuntu-latest
-    permissions:
-      checks: write
-    
-    env:
-      AUTH_USERNAME: ${{secrets.AUTH_USERNAME}}
-      AUTH_PASSWORD: ${{secrets.AUTH_PASSWORD}}
-      SECRET_KEY: ${{secrets.SECRET_KEY}}
-  
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4  # Cambiado de v6 a v4
+      - name: Run Newman API tests
+        run: |
+          mkdir -p postman/reports
+          newman run postman/restful-ecommerce-collection.json \
+            -e postman/environments/environment-qa.json \
+            --env-var "username=${{ secrets.AUTH_USERNAME }}" \
+            --env-var "password=${{ secrets.AUTH_PASSWORD }}" \
+            -r cli,htmlextra,junitfull \
+            --reporter-htmlextra-export postman/reports/report.html \
+            --reporter-junitfull-export postman/reports/results.xml
 
-    - name: Install the dependencies
-      run: npm ci
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-test-reports
+          path: postman/reports/
 
-    - name: Create .env from secrets
-      run: |
-        cat > .env <<'EOF'
-        AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}
-        AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}
-        SECRET_KEY=${{ secrets.SECRET_KEY }}
-        EOF
-
-    - name: Start the service using Docker Compose
-      run: docker compose -f docker-compose-ecommerce.yml up -d
-    
-    - name: Wait for service to be available
-      run: npx wait-on http://localhost:3004 --timeout 60000  # Añadido timeout
-
-    - name: Install Newman and Reporters
-      run: npm install -g newman newman-reporter-htmlextra newman-reporter-junitfull
-
-    - name: Run Newman API Tests
-      run: |
-        mkdir -p postman/reports
-        newman run postman/restful-ecommerce-collection.json \
-          -e postman/environments/environment-qa.json \
-          --env-var "username=${{ secrets.AUTH_USERNAME }}" \
-          --env-var "password=${{ secrets.AUTH_PASSWORD }}" \
-          -r cli,htmlextra,junitfull \
-          --reporter-htmlextra-export postman/reports/report.html \
-          --reporter-junitfull-export postman/reports/results.xml
-
-    - name: Upload Test Report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: api-test-reports
-        path: postman/reports/
-
-    - name: Stop the service
-      if: always()
-      run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans || true  # Añadido || true
+      - name: Stop Docker Compose service
+        if: always()
+        run: docker compose -f docker-compose-ecommerce.yml down --remove-orphans || true
