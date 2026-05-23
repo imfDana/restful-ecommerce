@@ -1,21 +1,21 @@
 FROM node:lts-alpine3.20 AS builder
 
-WORKDIR /restful-ecommerce-app
+WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY ./ ./
 
 RUN npm cache clean --force && \
     rm -rf /root/.npm
 
-FROM gcr.io/distroless/nodejs18-debian11
+FROM node:20-alpine
 
-WORKDIR /restful-ecommerce-app
+WORKDIR /app
 
-COPY --from=builder /restful-ecommerce-app /restful-ecommerce-app
+COPY --from=builder /app /app
 
 EXPOSE 3004
 
-CMD ["./app.js"]
+CMD ["node", "app.js"]
