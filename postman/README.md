@@ -11,9 +11,9 @@ This directory contains a professional, production-grade Postman collection and 
 
 ## Prerequisites
 - Node.js (v16 or higher)
-- Newman & Newman HTML Extra Reporter:
+- Newman & Newman Reporters:
   ```bash
-  npm install -g newman newman-reporter-htmlextra
+  npm install -g newman newman-reporter-htmlextra newman-reporter-junitfull
   ```
 
 ## Running from Postman UI

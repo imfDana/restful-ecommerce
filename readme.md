@@ -1,4 +1,4 @@
-[![Node.js CI](https://github.com/mfaisalkhatri/restful-ecommerce/actions/workflows/node.js.yml/badge.svg?branch=main)](https://github.com/mfaisalkhatri/restful-ecommerce/actions/workflows/node.js.yml) [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![CI - Newman API Tests](https://github.com/imfDana/restful-ecommerce/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/imfDana/restful-ecommerce/actions/workflows/tests.yml) [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 # Restful E-Commerce
 
@@ -40,24 +40,7 @@ Swagger is exposed on http://localhost:3004/api-docs
 1. Select `OpenAPI 3.0 with a Postman Collection` and click on `Import`
 1. All the Available APIs will be imported in Postman and can be used for testing
 
-# Installation using Docker
-1. Clone the repo
-1. Navigate into the restful-ecommerce root folder
-1. Create a `.env` file and copy the following contents in it:
-  ```
-  AUTH_USERNAME=admin
-  AUTH_PASSWORD=secretPass123
-  SECRET_KEY=Secret999$
-  ```
-1. Run `docker compose -f docker-compose-ecommerce.yml up -d` - This command will start the application in detached mode
-1. APIs are exposed on http://localhost:3004/
-1. Swagger is exposed on http://localhost:3004/api-docs
-1. Run `docker compose -f docker-compose-ecommerce.yml down` to stop the application.
 
-# Running the Unit Tests
-
-After running all the steps mentioned in the `Installation steps` section, the following command will execute all the unit-tests. (It is optional to run the unit tests, these tests are written using SuperTest) 
-1. Run `npm run unit-test`
 
 ## Checkout the API Documentation on the [Wiki-Page](https://github.com/mfaisalkhatri/restful-ecommerce/wiki)
 
