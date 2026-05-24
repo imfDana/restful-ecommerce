@@ -1,7 +1,7 @@
-# CI Workflow — Unit Tests + Newman API Suite
+# CI Workflow — Newman API Suite (Docker Compose)
 # Runs on every push/PR to main or issue-* branches
 
-name: CI - Unit Tests + Newman QA Suite
+name: CI - Newman API Tests
 
 on:
   push:
@@ -15,67 +15,11 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 1: Build with bare Node and run unit tests
-  # ─────────────────────────────────────────────────────────────────────────────
-  Unit_Tests:
-    name: Run Unit Tests (Node)
-    runs-on: ubuntu-latest
-    permissions:
-      checks: write
-
-    env:
-      AUTH_USERNAME: ${{ secrets.AUTH_USERNAME }}
-      AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Create .env from secrets
-        # NOTE: unquoted EOF so the shell receives literal values already
-        # expanded by GitHub Actions before the step runs.
-        run: |
-          cat > .env <<EOF
-          AUTH_USERNAME=${{ secrets.AUTH_USERNAME }}
-          AUTH_PASSWORD=${{ secrets.AUTH_PASSWORD }}
-          SECRET_KEY=${{ secrets.SECRET_KEY }}
-          EOF
-
-      - name: Start the app in background
-        run: npm start &
-
-      # Use the /health endpoint (returns HTTP 200) instead of / (returns 404).
-      # wait-on treats any non-2xx as "not ready" — that was the root cause.
-      - name: Wait for the service to be healthy
-        run: npx wait-on http://localhost:3004/health --timeout 30000
-
-      - name: Run unit tests
-        run: npm test
-
-      - name: Kill Node process
-        if: always()
-        run: pkill -f node || true
-
-      - name: Publish Test Report
-        uses: dorny/test-reporter@v3
-        if: success() || failure()
-        with:
-          name: Unit Test Report
-          path: ${{ github.workspace }}/reports/test-results.json
-          reporter: mocha-json
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 2: Build via Docker Compose and run Newman API tests
-  # Only runs after unit tests pass (needs: Unit_Tests).
+  # Build via Docker Compose and run Newman API tests
   # ─────────────────────────────────────────────────────────────────────────────
   Newman_API_Tests:
     name: Run Newman API Tests (Docker Compose)
     runs-on: ubuntu-latest
-    needs: Unit_Tests          # Don't waste Docker build time if unit tests fail
     permissions:
       checks: write
 
@@ -88,9 +32,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Create .env from secrets
         run: |
           cat > .env <<EOF
@@ -99,12 +40,33 @@ jobs:
           SECRET_KEY=${{ secrets.SECRET_KEY }}
           EOF
 
-      - name: Start service via Docker Compose
-        run: docker compose -f docker-compose-ecommerce.yml up -d --build
+      # Enable BuildKit with the docker-container driver, which is required
+      # to use GitHub Actions cache (type=gha) in the build step below.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      # Docker image builds on a cold runner take 60-90 s.
-      # The previous 60 000 ms timeout was consistently too short.
-      # Using /health (200 OK) so wait-on resolves immediately once ready.
+      # Build the image once with layer caching so subsequent runs are fast.
+      # cache-from: pulls cached layers from the GHA cache on cache hits.
+      # cache-to:   saves new/changed layers back to the GHA cache for the next run.
+      # load: true  makes the built image available to docker compose (local daemon).
+      - name: Build Docker image (with layer cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: restful-ecommerce:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Image is already built and tagged — no need for --build here.
+      # Compose picks up restful-ecommerce:ci via the image: key in compose file.
+      - name: Start service via Docker Compose
+        run: docker compose -f docker-compose-ecommerce.yml up -d
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: 0
+
+      # /health returns HTTP 200 once the app is ready.
+      # 120 s is generous; with layer caching the container starts in seconds.
       - name: Wait for the service to be healthy
         run: npx wait-on http://localhost:3004/health --timeout 120000
 

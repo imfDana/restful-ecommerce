@@ -1,9 +1,14 @@
-# To execute: docker compose -f docker-compose-ecommerce.yml up -d
-# To stop:    docker compose -f docker-compose-ecommerce.yml down
+# Local usage:  docker compose -f docker-compose-ecommerce.yml up -d --build
+# CI usage:     image is pre-built by docker/build-push-action with GHA layer
+#               caching; compose just starts the already-built image.
+# To stop:      docker compose -f docker-compose-ecommerce.yml down
 
 services:
   restful-ecommerce:
-    build: .
+    # In CI the image is pre-built and tagged as restful-ecommerce:ci.
+    # Locally you can override with: COMPOSE_IMAGE=restful-ecommerce docker compose up --build
+    image: ${COMPOSE_IMAGE:-restful-ecommerce:ci}
+    build: .          # used only when --build is passed (local dev)
     ports:
       - 3004:3004
     env_file:

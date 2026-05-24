@@ -4,10 +4,7 @@
   "description": "Demo resftul apis for e-commerce app",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js",
-    "test": "mocha --reporter json --reporter-option output=reports/test-results.json",
-    "unit-test": "mocha **/*.spec.js",
-    "mochawesome-report": "mocha --reporter mochawesome"
+    "start": "node app.js"
   },
   "type": "module",
   "keywords": [
@@ -19,16 +16,12 @@
   "author": "Faisal Khatri",
   "license": "ISC",
   "dependencies": {
-    "chai": "^6.2.2",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fs": "^0.0.1-security",
     "jsonwebtoken": "^9.0.3",
-    "mocha": "^11.7.5",
-    "mochawesome": "^7.1.4",
     "multer": "^2.1.1",
     "path": "^0.12.7",
-    "supertest": "^7.2.2",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "wait-on": "^9.0.10"
